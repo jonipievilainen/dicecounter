@@ -4,7 +4,7 @@ import random
 import sys
 import numpy as np
 
-print cv2.__version__
+print(cv2.__version__)
 
 DICE_SIZE = 16
 BLUR_FACTOR = 5
@@ -16,8 +16,8 @@ def resizeRect(rect, sizeFactor):
 	
 
 #img = cv2.imread("dice3.jpg")
-img = cv2.imread("dice-real.jpg")
-#img = cv2.imread("dice-real-2.jpg")
+#img = cv2.imread("dice-real.jpg")
+img = cv2.imread("d2.jpg")
 
 ### Threshold image
 
@@ -26,11 +26,27 @@ blurred = cv2.medianBlur(img,BLUR_FACTOR)
 blue = cv2.split(blurred)[0]
 green = cv2.split(blurred)[1]
 red = cv2.split(blurred)[2]
+gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
+
+
+# Esikäsittely
+blurred = cv2.medianBlur(img, 5)
+
+# LAB-muunnos
+lab = cv2.cvtColor(blurred, cv2.COLOR_BGR2LAB)
+l_channel = cv2.split(lab)[0]
+
+# Kynnytys valkoisten noppien havaitsemiseen
+diceblocks = cv2.threshold(l_channel, 200, 255, cv2.THRESH_BINARY_INV)
+
+
+
 
 # Fetch the dice contours using red threshold. invert.
-diceblocks = cv2.threshold(red, RED_LOW_THRESHOLD, 255, 1) # 185 --> 235
+#diceblocks = cv2.threshold(gray, RED_LOW_THRESHOLD, 255, 1) # 185 --> 235
+diceblocks = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
 invdiceblocks = 255 - diceblocks[1]
-##cv2.imshow("diceblocks",invdiceblocks)
+cv2.imshow("diceblocks",invdiceblocks)
 
 # do a distance transform and normalize that so we can visualize and threshold it 
 pyramids = cv2.distanceTransform(invdiceblocks, 2, 3)
@@ -38,7 +54,7 @@ cv2.normalize(pyramids, pyramids, 0, 1.2, cv2.NORM_MINMAX)
 
 # obtain markers for the watershed algorithm by thresholding
 markers = cv2.threshold(pyramids, 0.8, 1, 0)[1] 
-##cv2.imshow("markers",markers)
+#cv2.imshow("markers",markers)
 
 # dilate the dice markers with a DICE_SIZE px element to capture all pips in the contours
 #newImg = cv2.dilate(markers, cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(DICE_SIZE, DICE_SIZE)))
@@ -47,8 +63,10 @@ markers = cv2.threshold(pyramids, 0.8, 1, 0)[1]
 bwImg = cv2.convertScaleAbs(markers * 255)
 
 # capture those contours!
-_, pyramids, hierarchy = cv2.findContours(bwImg.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-print str(len(pyramids)) + " dice."
+pyramids, hierarchy = cv2.findContours(bwImg.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+
+print(str(len(pyramids)) + " dice.")
 
 # fit a rotated rectangle on the distance transformed pyramid
 for pyramid in pyramids:
@@ -57,18 +75,20 @@ for pyramid in pyramids:
 	rect = resizeRect(rect, DICE_SIZE)
 
 	floatBox = cv2.boxPoints(rect)
-	intBox = np.int0(floatBox)
+	intBox = np.int32(floatBox)
 	bwImg = cv2.drawContours(bwImg,[intBox],0,(255,0,0),-1)
 
 	pts1 = floatBox
 	a,b,c,d = cv2.boundingRect(intBox)
+	
 	pts2 = np.float32([[a,b],[a+c,b],[a,b+d],[a+c,b+d]])
 
 	M = cv2.getPerspectiveTransform(pts1,pts2)
 	dst = cv2.warpPerspective(bwImg,M,pts2.shape)
 	
 # capture those large contours!
-_, contours, hierarchy = cv2.findContours(bwImg.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+contours, hierarchy = cv2.findContours(bwImg.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
 	
 # filter out the pips, and then cut out those using the contour areas
 pips = 255 - cv2.threshold(cv2.cvtColor(blurred, cv2.COLOR_RGB2GRAY), 200, 255, 1)[1]
@@ -87,13 +107,14 @@ for contour in contours:
 	# with only the pips
 	rect = cv2.minAreaRect(contour)
 	floatBox = cv2.boxPoints(rect)
-	intBox = np.int0(floatBox)
+	intBox = np.int32(floatBox)
 	a,b,c,d = cv2.boundingRect(intBox)
 	
 	# cut out the dice face
 	subimage = onlypips[b:b+d,a:a+c]
 	# count the number of contours
-	_,pip_contours, subhierarchy = cv2.findContours(subimage.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+	pip_contours, subhierarchy = cv2.findContours(subimage.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
 	for pip in pip_contours:
 		# count pips only if they are of a certain size
 		if cv2.contourArea(pip) >= MIN_PIP_AREA:
@@ -102,18 +123,25 @@ for contour in contours:
 	# log erroneous dice
 	if pips > 6 or pips == 0:
 		wrongdice = wrongdice + 1
-		print pips
+		print(pips)
 	else:
 		dice_results[pips - 1] = dice_results[pips - 1] + 1
-		cv2.putText(dice,str(pips),(a,b-5),0,1,(0,0,255))
+
+		dice_results[pips - 1] += 1
+        # Draw the number on the dice face
+		cv2.putText(dice, str(pips), (a, b - 5), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
 	
 # print out the results
-print dice_results
-print str(wrongdice) + " erroneous objects found."
+print("start here print--->")
+print(pips)
+
+print(dice_results)
+print(str(wrongdice) + " erroneous objects found.")
 
 cv2.drawContours(dice,contours,-1,(255,255,0),1)
-cv2.imshow('Dice', dice)
-cv2.imshow('Original',img)
+#cv2.imshow('Dice', dice)
+#cv2.imshow('Original',img)
 #cv2.cvtColor(blurred, cv2.COLOR_RGB2GRAY))
 
 def doCallbackTest(value):
